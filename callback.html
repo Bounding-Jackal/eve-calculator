@@ -17,7 +17,124 @@
   .box {
     text-align: center;
     border: 1px solid #1e3a5f;
-    padding: 40px 60px;<!DOCTYPE html>
+    padding: 40px 60px;<!DOCTYPE html><!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EVE Auth — Authenticating...</title>
+<style>
+  body {
+    background: #050d1a;
+    font-family: 'Courier New', Courier, monospace;
+    color: #c8d8e8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    margin: 0;
+  }
+  .box { text-align:center; border:1px solid #1e3a5f; padding:40px 60px; background:#07111f; max-width:420px; }
+  .title { font-size:13px; letter-spacing:4px; color:#3a7bd5; margin-bottom:12px; }
+  .msg   { font-size:11px; color:#4a7a9b; margin-top:8px; }
+  .err   { color:#e74c3c; font-size:11px; margin-top:12px; }
+  @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  .spin  { display:inline-block; animation:spin 1.2s linear infinite; font-size:22px; color:#3a7bd5; }
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="title">EVE ONLINE SSO</div>
+  <div class="spin">◈</div>
+  <div class="msg" id="msg">Authenticating with EVE Online...</div>
+  <div class="err" id="err"></div>
+</div>
+<script>
+const CLIENT_ID    = "4c0d01552819491884073fb9dbf138ab";
+const REDIRECT_URI = "https://bounding-jackal.github.io/eve-calculator/callback.html";
+
+function log(msg, color) {
+  const el = document.createElement("div");
+  el.style.cssText = `font-size:10px;color:${color||"#4a7a9b"};margin-top:4px;text-align:left;word-break:break-all`;
+  el.textContent = msg;
+  document.querySelector(".box").appendChild(el);
+}
+
+async function handleCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const code   = params.get("code");
+
+  log(`code present: ${!!code}`);
+  log(`full URL: ${window.location.href}`);
+
+  if (!code) {
+    document.getElementById("err").textContent = "No auth code received from EVE SSO.";
+    return;
+  }
+
+  document.getElementById("msg").textContent = "Exchanging auth code for token...";
+
+  try {
+    log("Sending token exchange request...");
+    const tokenRes = await fetch("https://login.eveonline.com/v2/oauth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type:   "authorization_code",
+        code,
+        redirect_uri: REDIRECT_URI,
+        client_id:    CLIENT_ID,
+      }),
+    });
+
+    log(`token exchange status: ${tokenRes.status}`);
+
+    if (!tokenRes.ok) {
+      const err = await tokenRes.text();
+      log(`error body: ${err}`, "#e74c3c");
+      throw new Error(`Token exchange failed: ${tokenRes.status} — ${err}`);
+    }
+
+    const tokenData   = await tokenRes.json();
+    const accessToken = tokenData.access_token;
+    log(`token received: ${!!accessToken}`, "#27ae60");
+
+    document.getElementById("msg").textContent = "Fetching character info...";
+
+    // Decode JWT payload
+    const payload  = JSON.parse(atob(accessToken.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")));
+    const charId   = parseInt(payload.sub.replace("CHARACTER:EVE:",""));
+    const charName = payload.name;
+    log(`character: ${charName} (${charId})`, "#27ae60");
+
+    // Store tokens and pending char
+    const existingTokens = JSON.parse(sessionStorage.getItem("eve_tokens") || "{}");
+    existingTokens[charId] = accessToken;
+    sessionStorage.setItem("eve_tokens", JSON.stringify(existingTokens));
+    sessionStorage.setItem("eve_pending_char", JSON.stringify({
+      id: charId, name: charName, token: accessToken
+    }));
+
+    log(`sessionStorage written. Redirecting in 3s...`, "#27ae60");
+    document.getElementById("msg").textContent = `Welcome, ${charName}! Redirecting in 3s...`;
+
+    // Longer delay so you can see the debug output before redirect
+    setTimeout(() => {
+      window.location.href = "https://bounding-jackal.github.io/eve-calculator/";
+    }, 3000);
+
+  } catch(e) {
+    document.getElementById("msg").textContent = "Authentication failed.";
+    document.getElementById("err").textContent = e.message;
+    log(`exception: ${e.stack||e.message}`, "#e74c3c");
+    console.error(e);
+  }
+}
+
+handleCallback();
+</script>
+</body>
+</html>
+
 <html lang="en">
 <head>
 <meta charset="UTF-8">
