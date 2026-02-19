@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EVE Capital Construction Calculator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(ellipse at 20% 20%, #0a1628 0%, #050d1a 50%, #020810 100%);
+    min-height: 100vh;
+    font-family: 'Courier New', Courier, monospace;
+    color: #c8d8e8;
+  }
+  input[type=range] { width: 100%; cursor: pointer; }
+  button { font-family: 'Courier New', Courier, monospace; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #050d1a; }
+  ::-webkit-scrollbar-thumb { background: #1e3a5f; }
+  .row-hover:hover { background: #0d1e35 !important; }
+  .ship-btn:hover { color: #c8d8e8 !important; }
+  .cls-btn:hover  { color: #7ab8f5 !important; }
+  .tab-btn { transition: all 0.15s; }
+  .tab-btn:hover { border-color: #3a7bd5 !important; color: #7ab8f5 !important; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  @keyndef spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  .spin { animation: spin 1.2s linear infinite; display:inline-block; }
+  .blink { animation: pulse 1.5s ease-in-out infinite; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+// ── Config ────────────────────────────────────────────────────────────
+const CLIENT_ID    = "4c0d01552819491884073fb9dbf138ab";
+const REDIRECT_URI = "https://bounding-jackal.github.io/eve-calculator/callback.html";
+const SCOPES       = [
+  "esi-assets.read_assets.v1",
+  "esi-industry.read_character_jobs.v1",
+  "esi-planets.manage_planets.v1",
+].join(" ");
+
+const ESI = "https://esi.evetech.net/latest";
+
+// ── Component data ────────────────────────────────────────────────────
+const COMPONENTS = [
+  { name: "Capital Armor Plates",          typeId: 21019, owned: true  },
+  { name: "Capital Capacitor Battery",     typeId: 21021, owned: false },
+  { name: "Capital Cargo Bay",             typeId: 21023, owned: true  },
+  { name: "Capital Clone Vat Bay",         typeId: 21025, owned: false },
+  { name: "Capital Computer System",       typeId: 21027, owned: false },
+  { name: "Capital Construction Parts",    typeId: 21033, owned: true  },
+  { name: "Capital Core Temp Regulator",   typeId: 21029, owned: true  },
+  { name: "Capital Corporate Hangar Bay",  typeId: 21031, owned: false },
+  { name: "Capital Doomsday Weapon Mount", typeId: 21035, owned: false },
+  { name: "Capital Drone Bay",             typeId: 21037, owned: true  },
+  { name: "Capital Jump Bridge Array",     typeId: 21039, owned: false },
+  { name: "Capital Jump Drive",            typeId: 21041, owned: false },
+  { name: "Capital Launcher Hardpoint",    typeId: 21043, owned: false },
+  { name: "Capital Power Generator",       typeId: 21009, owned: false },
+  { name: "Capital Propulsion Engine",     typeId: 21011, owned: false },
+  { name: "Capital Sensor Cluster",        typeId: 21013, owned: false },
+  { name: "Capital Shield Emitter",        typeId: 21015, owned: false },
+  { name: "Capital Ship Maintenance Bay",  typeId: 21017, owned: false },
+  { name: "Capital Siege Array",           typeId: 21045, owned: false },
+  { name: "Capital Turret Hardpoint",      typeId: 21047, owned: false },
+  { name: "Enh. Neurolink Protection Cell",typeId: 28832, owned: false },
+  { name: "Neurolink Protection Cell",     typeId: 28830, owned: false },
+];
+
+const COMP_BY_ID = Object.fromEntries(COMPONENTS.map(c => [c.typeId, c]));
+
+const SHIPS = {
+  Revelation: { class:"Dreadnought",     race:"Amarr",    reqs:[[0,4],[1,2],[4,2],[5,2],[6,1],[7,2],[11,2],[13,2],[14,4],[15,4],[16,2],[17,4],[18,15],[19,15],[21,1]] },
+  Moros:      { class:"Dreadnought",     race:"Gallente", reqs:[[0,3],[1,2],[4,2],[5,2],[6,1],[7,2],[11,2],[13,2],[14,4],[15,3],[16,3],[17,4],[18,15],[19,15],[21,1]] },
+  Phoenix:    { class:"Dreadnought",     race:"Caldari",  reqs:[[0,2],[1,2],[4,4],[5,2],[6,1],[7,2],[11,2],[12,15],[13,2],[14,4],[15,2],[16,4],[17,4],[18,15],[21,1]] },
+  Naglfar:    { class:"Dreadnought",     race:"Minmatar", reqs:[[0,3],[1,2],[4,3],[5,2],[6,1],[7,2],[11,2],[13,2],[14,4],[15,2],[16,3],[17,4],[18,15],[19,15],[21,1]] },
+  Archon:     { class:"Carrier",         race:"Amarr",    reqs:[[0,6],[1,3],[4,3],[5,4],[6,1],[7,3],[9,12],[11,4],[13,3],[14,4],[15,4],[16,3],[17,6],[21,1]] },
+  Chimera:    { class:"Carrier",         race:"Caldari",  reqs:[[0,3],[1,3],[4,4],[5,4],[6,1],[7,3],[9,12],[11,4],[13,3],[14,4],[15,3],[16,6],[17,6],[21,1]] },
+  Nidhoggur:  { class:"Carrier",         race:"Minmatar", reqs:[[0,3],[1,3],[4,4],[5,4],[6,1],[7,3],[9,12],[11,4],[13,3],[14,4],[15,3],[16,6],[17,6],[21,1]] },
+  Thanatos:   { class:"Carrier",         race:"Gallente", reqs:[[0,6],[1,3],[4,3],[5,4],[6,1],[7,3],[9,12],[11,4],[13,3],[14,4],[15,4],[16,3],[17,6],[21,1]] },
+  Apostle:    { class:"Force Auxiliary", race:"Amarr",    reqs:[[0,20],[1,15],[4,10],[5,10],[6,1],[7,8],[9,5],[11,5],[13,10],[14,10],[15,15],[16,10],[17,15],[18,25],[21,1]] },
+  Lif:        { class:"Force Auxiliary", race:"Minmatar", reqs:[[0,10],[1,15],[4,15],[5,10],[6,1],[7,8],[9,5],[11,5],[13,10],[14,10],[15,10],[16,20],[17,15],[18,25],[21,1]] },
+  Minokawa:   { class:"Force Auxiliary", race:"Caldari",  reqs:[[0,10],[1,15],[4,15],[5,10],[6,1],[7,8],[9,5],[11,5],[13,10],[14,10],[15,10],[16,20],[17,15],[18,25],[21,1]] },
+  Ninazu:     { class:"Force Auxiliary", race:"Gallente", reqs:[[0,20],[1,15],[4,10],[5,10],[6,1],[7,8],[9,5],[11,5],[13,10],[14,10],[15,15],[16,10],[17,15],[18,25],[21,1]] },
+  Aeon:       { class:"Supercarrier",    race:"Amarr",    reqs:[[0,125],[1,100],[4,10],[5,50],[6,1],[7,50],[9,250],[11,100],[13,100],[14,50],[15,40],[16,25],[17,100],[20,1]] },
+  Hel:        { class:"Supercarrier",    race:"Minmatar", reqs:[[0,50],[1,150],[4,10],[5,50],[6,1],[7,50],[9,250],[11,100],[13,50],[14,50],[15,40],[16,100],[17,100],[20,1]] },
+  Nyx:        { class:"Supercarrier",    race:"Gallente", reqs:[[0,50],[1,100],[4,40],[5,50],[6,1],[7,50],[9,250],[11,100],[13,100],[14,50],[15,10],[16,100],[17,100],[20,1]] },
+  Wyvern:     { class:"Supercarrier",    race:"Caldari",  reqs:[[0,25],[1,75],[4,40],[5,50],[6,1],[7,50],[9,250],[11,100],[13,125],[14,50],[15,10],[16,125],[17,100],[20,1]] },
+  Rorqual:    { class:"Industrial Capital",race:"Ore",    reqs:[[0,5],[1,10],[2,20],[3,30],[4,30],[5,40],[6,1],[7,15],[9,5],[10,5],[11,10],[13,10],[14,5],[15,5],[16,5],[17,15]] },
+  Charon:     { class:"Freighter",       race:"Caldari",  reqs:[[0,5],[2,50],[5,5],[14,5]]  },
+  Obelisk:    { class:"Freighter",       race:"Gallente", reqs:[[0,5],[2,45],[5,5],[14,10]] },
+  Fenrir:     { class:"Freighter",       race:"Minmatar", reqs:[[0,5],[2,35],[5,5],[14,20]] },
+  Providence: { class:"Freighter",       race:"Amarr",    reqs:[[0,5],[2,40],[5,5],[14,15]] },
+  Rhea:       { class:"Jump Freighter",  race:"Caldari",  reqs:[[0,5],[2,50],[5,5],[11,30],[14,5]]  },
+  Anshar:     { class:"Jump Freighter",  race:"Gallente", reqs:[[0,5],[2,45],[5,5],[11,30],[14,10]] },
+  Nomad:      { class:"Jump Freighter",  race:"Minmatar", reqs:[[0,5],[2,35],[5,5],[11,30],[14,20]] },
+  Ark:        { class:"Jump Freighter",  race:"Amarr",    reqs:[[0,5],[2,40],[5,5],[11,30],[14,15]] },
+};
+
+const CLASS_ORDER  = ["Dreadnought","Carrier","Force Auxiliary","Supercarrier","Industrial Capital","Freighter","Jump Freighter"];
+const CLASS_COLORS = {
+  "Dreadnought":        { bg:"#0d1f35", accent:"#3a7bd5", glow:"#3a7bd540" },
+  "Carrier":            { bg:"#0d2a1a", accent:"#27ae60", glow:"#27ae6040" },
+  "Force Auxiliary":    { bg:"#1e0d2a", accent:"#8e44ad", glow:"#8e44ad40" },
+  "Supercarrier":       { bg:"#2a0d0d", accent:"#e74c3c", glow:"#e74c3c40" },
+  "Industrial Capital": { bg:"#1a1a0d", accent:"#d4ac0d", glow:"#d4ac0d40" },
+  "Freighter":          { bg:"#1a1208", accent:"#e67e22", glow:"#e67e2240" },
+  "Jump Freighter":     { bg:"#1a0f08", accent:"#ca6f1e", glow:"#ca6f1e40" },
+};
+const RACE_ICONS = { Amarr:"⚜️", Gallente:"🌿", Caldari:"❄️", Minmatar:"⚙️", Ore:"⛏️" };
+
+// ── Helpers ───────────────────────────────────────────────────────────
+function formatISK(v) {
+  if (!v && v !== 0) return "—";
+  if (v >= 1e12) return (v/1e12).toFixed(2)+" T";
+  if (v >= 1e9)  return (v/1e9).toFixed(2)+" B";
+  if (v >= 1e6)  return (v/1e6).toFixed(2)+" M";
+  return v.toLocaleString();
+}
+function applyME(qty, me) { return Math.max(1, Math.ceil(qty*(1-me/100))); }
+
+function generateState() {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, b => b.toString(16).padStart(2,"0")).join("");
+}
+
+async function esiGet(path, token) {
+  const res = await fetch(`${ESI}${path}`, {
+    headers: { Authorization: `Bearer ${token}`, "Content-Type":"application/json" }
+  });
+  if (!res.ok) throw new Error(`ESI ${res.status}: ${path}`);
+  // Handle pagination
+  const data = await res.json();
+  const pages = parseInt(res.headers.get("X-Pages") || "1");
+  if (pages <= 1) return data;
+  const rest = await Promise.all(
+    Array.from({length: pages-1}, (_,i) =>
+      fetch(`${ESI}${path}${path.includes("?")?"&":"?"}page=${i+2}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      }).then(r => r.json())
+    )
+  );
+  return [...data, ...rest.flat()];
+}
+
+// Resolve type names from ESI in batches
+async function resolveTypeNames(typeIds) {
+  const unique = [...new Set(typeIds)];
+  const batches = [];
+  for (let i=0; i<unique.length; i+=1000) batches.push(unique.slice(i,i+1000));
+  const results = {};
+  await Promise.all(batches.map(async batch => {
+    try {
+      const res = await fetch(`${ESI}/universe/names/`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify(batch)
+      });
+      const data = await res.json();
+      data.forEach(({id, name}) => results[id] = name);
+    } catch(e) {}
+  }));
+  return results;
+}
+
+// ── Auth helpers ──────────────────────────────────────────────────────
+function startLogin() {
+  const params = new URLSearchParams({
+    response_type: "code",
+    redirect_uri:  REDIRECT_URI,
+    client_id:     CLIENT_ID,
+    scope:         SCOPES,
+    state:         "eve_calc_login",
+  });
+  window.location.href = `https://login.eveonline.com/v2/oauth/authorize?${params}`;
+}
+
+function logout() {
+  sessionStorage.removeItem("eve_token");
+  sessionStorage.removeItem("eve_character");
+  window.location.reload();
+}
+
+// ── Main App ──────────────────────────────────────────────────────────
+function App() {
+  const [prices, setPrices]           = React.useState({});
+  const [priceLoading, setPriceLoading] = React.useState(true);
+  const [priceError, setPriceError]   = React.useState(null);
+  const [lastUpdated, setLastUpdated] = React.useState(null);
+
+  const [token, setToken]             = React.useState(() => sessionStorage.getItem("eve_token"));
+  const [character, setCharacter]     = React.useState(() => {
+    const s = sessionStorage.getItem("eve_character");
+    return s ? JSON.parse(s) : null;
+  });
+
+  const [assets, setAssets]           = React.useState(null);
+  const [jobs, setJobs]               = React.useState(null);
+  const [planets, setPlanets]         = React.useState(null);
+  const [esiLoading, setEsiLoading]   = React.useState(false);
+  const [esiError, setEsiError]       = React.useState(null);
+  const [typeNames, setTypeNames]     = React.useState({});
+
+  const [selectedShip, setSelectedShip] = React.useState("Revelation");
+  const [me, setMe]                   = React.useState(10);
+  const [activeClass, setActiveClass] = React.useState("Dreadnought");
+  const [activeTab, setActiveTab]     = React.useState("calculator"); // calculator | assets | jobs | pi
+
+  // Fetch market prices
+  const fetchPrices = React.useCallback(async () => {
+    setPriceLoading(true); setPriceError(null);
+    const ids = COMPONENTS.map(c=>c.typeId).join(",");
+    try {
+      const res = await fetch(`https://market.fuzzwork.co.uk/aggregates/?region=10000002&types=${ids}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const map = {};
+      for (const c of COMPONENTS) {
+        const e = data[c.typeId];
+        map[c.typeId] = e ? parseFloat(e.sell.min) : null;
+      }
+      setPrices(map);
+      setLastUpdated(new Date());
+    } catch(e) {
+      setPriceError("Could not reach Fuzzwork API.");
+    } finally {
+      setPriceLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => { fetchPrices(); }, [fetchPrices]);
+
+  // Fetch ESI data when token is available
+  React.useEffect(() => {
+    if (!token || !character) return;
+    const charId = character.CharacterID;
+    setEsiLoading(true); setEsiError(null);
+
+    Promise.all([
+      esiGet(`/characters/${charId}/assets/?datasource=tranquility`, token),
+      esiGet(`/characters/${charId}/industry/jobs/?datasource=tranquility&include_completed=false`, token),
+      esiGet(`/characters/${charId}/planets/?datasource=tranquility`, token),
+    ]).then(async ([rawAssets, rawJobs, rawPlanets]) => {
+      // Collect unknown type IDs for name resolution
+      const unknownIds = new Set();
+      rawAssets.forEach(a => {
+        if (!COMP_BY_ID[a.type_id]) unknownIds.add(a.type_id);
+        unknownIds.add(a.location_id);
+      });
+      rawJobs.forEach(j => {
+        unknownIds.add(j.blueprint_type_id);
+        unknownIds.add(j.product_type_id);
+        unknownIds.add(j.facility_id);
+      });
+      rawPlanets.forEach(p => unknownIds.add(p.planet_id));
+
+      const names = await resolveTypeNames([...unknownIds]);
+      setTypeNames(names);
+
+      // Aggregate capital component assets
+      const compAssets = {};
+      rawAssets.forEach(a => {
+        if (COMP_BY_ID[a.type_id]) {
+          compAssets[a.type_id] = (compAssets[a.type_id] || 0) + a.quantity;
+        }
+      });
+      setAssets(compAssets);
+      setJobs(rawJobs);
+      setPlanets(rawPlanets);
+    }).catch(e => {
+      setEsiError(`ESI error: ${e.message}`);
+    }).finally(() => {
+      setEsiLoading(false);
+    });
+  }, [token, character]);
+
+  // Build cost calc
+  const ship = SHIPS[selectedShip];
+  const cc   = CLASS_COLORS[ship?.class] || CLASS_COLORS["Dreadnought"];
+
+  const breakdown = (ship?.reqs || []).map(([idx, baseQty]) => {
+    const comp    = COMPONENTS[idx];
+    const qty     = applyME(baseQty, me);
+    const unit    = prices[comp.typeId] ?? null;
+    const inStock = assets ? (assets[comp.typeId] || 0) : null;
+    const need    = inStock != null ? Math.max(0, qty - inStock) : null;
+    return { comp, baseQty, qty, unit, total: unit!=null ? unit*qty : null, inStock, need };
+  });
+
+  const purchasedTotal    = breakdown.filter(r=>!r.comp.owned).reduce((s,r)=>s+(r.total??0),0);
+  const manufacturedTotal = breakdown.filter(r=> r.comp.owned).reduce((s,r)=>s+(r.total??0),0);
+  const grandTotal        = purchasedTotal + manufacturedTotal;
+  const shortfallCost     = assets ? breakdown.reduce((s,r) => {
+    if (r.need > 0 && r.unit) return s + r.need * r.unit;
+    return s;
+  }, 0) : null;
+
+  const shipsByClass = CLASS_ORDER.reduce((acc,cls) => {
+    acc[cls] = Object.entries(SHIPS).filter(([,s])=>s.class===cls).map(([n])=>n);
+    return acc;
+  }, {});
+
+  const TABS = [
+    { id:"calculator", label:"BUILD COST" },
+    { id:"assets",     label:"STOCK CHECK",  locked: !token },
+    { id:"jobs",       label:"INDUSTRY JOBS",locked: !token },
+    { id:"pi",         label:"PI COLONIES",  locked: !token },
+  ];
+
+  return (
+    <div style={{minHeight:"100vh", padding:"20px"}}>
+      <div style={{maxWidth:1200, margin:"0 auto"}}>
+
+        {/* ── Header ── */}
+        <div style={{marginBottom:20, borderBottom:"1px solid #1e3a5f", paddingBottom:16,
+          display:"flex", justifyContent:"space-between", alignItems:"flex-end", flexWrap:"wrap", gap:12}}>
+          <div>
+            <div style={{fontSize:10, letterSpacing:4, color:"#3a7bd5", marginBottom:4}}>
+              EVE INDUSTRY // CAPITAL BUILD COST ESTIMATOR
+            </div>
+            <h1 style={{fontSize:22, fontWeight:"bold", letterSpacing:2, margin:0,
+              background:"linear-gradient(135deg,#e8f4ff,#7ab8f5,#3a7bd5)",
+              WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent"}}>
+              CAPITAL CONSTRUCTION CALCULATOR
+            </h1>
+          </div>
+
+          {/* Auth panel */}
+          {token && character ? (
+            <div style={{display:"flex", alignItems:"center", gap:12,
+              background:"#0d1f35", border:"1px solid #1e3a5f", padding:"8px 14px"}}>
+              <img src={`https://images.evetech.net/characters/${character.CharacterID}/portrait?size=32`}
+                style={{width:32, height:32, border:"1px solid #1e3a5f"}} alt="" />
+              <div>
+                <div style={{fontSize:11, color:"#e8f4ff", fontWeight:"bold"}}>{character.CharacterName}</div>
+                <div style={{fontSize:9, color:"#27ae60"}}>◈ ESI CONNECTED</div>
+              </div>
+              <button onClick={logout} style={{
+                background:"transparent", border:"1px solid #3a1a1a", color:"#e74c3c",
+                padding:"3px 10px", cursor:"pointer", fontSize:9, letterSpacing:1}}>
+                LOGOUT
+              </button>
+            </div>
+          ) : (
+            <button onClick={startLogin} style={{
+              background:"linear-gradient(135deg,#0d2a4a,#1a3a6a)", border:"1px solid #3a7bd5",
+              color:"#7ab8f5", padding:"10px 20px", cursor:"pointer", fontSize:11,
+              letterSpacing:2, fontWeight:"bold"}}>
+              ◈ LOGIN WITH EVE
+            </button>
+          )}
+        </div>
+
+        {/* ── Tabs ── */}
+        <div style={{display:"flex", gap:4, marginBottom:16, borderBottom:"1px solid #1a2a3a", paddingBottom:0}}>
+          {TABS.map(t => (
+            <button key={t.id} className="tab-btn" onClick={() => !t.locked && setActiveTab(t.id)} style={{
+              background: activeTab===t.id ? "#0d1f35" : "transparent",
+              border:`1px solid ${activeTab===t.id ? "#3a7bd5" : "#1a2a3a"}`,
+              borderBottom: activeTab===t.id ? "1px solid #0d1f35" : "1px solid #1a2a3a",
+              color: t.locked ? "#2a3a4a" : (activeTab===t.id ? "#7ab8f5" : "#4a6a8a"),
+              padding:"6px 16px", cursor: t.locked ? "not-allowed" : "pointer",
+              fontSize:10, letterSpacing:2, marginBottom:"-1px",
+              position:"relative", top:"1px"}}>
+              {t.label}{t.locked ? " 🔒" : ""}
+            </button>
+          ))}
+          <div style={{flex:1, display:"flex", justifyContent:"flex-end", alignItems:"center", gap:12, paddingBottom:4}}>
+            {lastUpdated && <span style={{fontSize:9, color:"#2a5a4a"}}>PRICES UPDATED {lastUpdated.toLocaleTimeString()}</span>}
+            <button onClick={fetchPrices} disabled={priceLoading} style={{
+              background:"transparent", border:"1px solid #1e3a5f", color:"#3a7bd5",
+              padding:"3px 10px", cursor:"pointer", fontSize:9, letterSpacing:1,
+              opacity: priceLoading ? 0.5 : 1}}>
+              {priceLoading ? "···" : "↻ REFRESH PRICES"}
+            </button>
+          </div>
+        </div>
+
+        {priceError && (
+          <div style={{marginBottom:12, padding:"6px 12px", background:"#2a0a0a",
+            border:"1px solid #7b1a1a", color:"#e74c3c", fontSize:11}}>⚠ {priceError}</div>
+        )}
+        {esiError && (
+          <div style={{marginBottom:12, padding:"6px 12px", background:"#2a0a0a",
+            border:"1px solid #7b1a1a", color:"#e74c3c", fontSize:11}}>⚠ {esiError}</div>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════
+            TAB: BUILD COST CALCULATOR
+        ══════════════════════════════════════════════════════════ */}
+        {activeTab === "calculator" && (
+          <div style={{display:"grid", gridTemplateColumns:"200px 1fr", gap:20}}>
+
+            {/* Ship selector */}
+            <div>
+              <div style={{fontSize:10, letterSpacing:3, color:"#3a7bd5", marginBottom:10}}>SELECT HULL</div>
+              {CLASS_ORDER.map(cls => (
+                <div key={cls} style={{marginBottom:5}}>
+                  <button className="cls-btn" onClick={()=>setActiveClass(cls)} style={{
+                    width:"100%", background: activeClass===cls ? "#0d1f35" : "transparent",
+                    border:`1px solid ${activeClass===cls ? CLASS_COLORS[cls].accent : "#1a2a3a"}`,
+                    color: activeClass===cls ? CLASS_COLORS[cls].accent : "#4a6a8a",
+                    padding:"5px 8px", cursor:"pointer", fontSize:9, letterSpacing:2,
+                    textAlign:"left", textTransform:"uppercase"}}>
+                    {cls}
+                  </button>
+                  {activeClass===cls && (
+                    <div style={{marginTop:2}}>
+                      {shipsByClass[cls].map(name => (
+                        <button key={name} className="ship-btn" onClick={()=>setSelectedShip(name)} style={{
+                          width:"100%",
+                          background: selectedShip===name ? `linear-gradient(90deg,${CLASS_COLORS[cls].accent}22,transparent)` : "transparent",
+                          border:"none",
+                          borderLeft:`2px solid ${selectedShip===name ? CLASS_COLORS[cls].accent : "#1a2a3a"}`,
+                          color: selectedShip===name ? "#e8f4ff" : "#5a7a9a",
+                          padding:"4px 10px", cursor:"pointer", fontSize:10, textAlign:"left"}}>
+                          {RACE_ICONS[SHIPS[name].race]} {name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Main panel */}
+            <div>
+              {/* Ship header */}
+              <div style={{background:`linear-gradient(135deg,${cc.bg},#050d1a)`,
+                border:`1px solid ${cc.accent}44`, padding:"14px 16px", marginBottom:12,
+                boxShadow:`0 0 24px ${cc.glow}`}}>
+                <div style={{display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:12, marginBottom:12}}>
+                  <div>
+                    <div style={{fontSize:10, letterSpacing:3, color:cc.accent, marginBottom:3}}>
+                      {RACE_ICONS[ship.race]} {ship.race} {ship.class}
+                    </div>
+                    <div style={{fontSize:22, fontWeight:"bold", letterSpacing:2, color:"#e8f4ff"}}>
+                      {selectedShip.toUpperCase()}
+                    </div>
+                  </div>
+                  <div style={{minWidth:180}}>
+                    <div style={{fontSize:10, letterSpacing:2, color:"#4a7a9b", marginBottom:4}}>
+                      MATERIAL EFFICIENCY: ME{me}
+                    </div>
+                    <input type="range" min={0} max={10} value={me}
+                      onChange={e=>setMe(+e.target.value)} style={{accentColor:cc.accent}} />
+                    <div style={{display:"flex", justifyContent:"space-between", fontSize:9, color:"#2a4a6a", marginTop:2}}>
+                      <span>ME0</span><span>ME10</span>
+                    </div>
+                    {me>0 && <div style={{fontSize:10, color:"#27ae60", marginTop:2}}>▼ {me}% reduction</div>}
+                  </div>
+                </div>
+
+                {/* Summary boxes */}
+                <div style={{display:"grid", gridTemplateColumns: shortfallCost!=null ? "1fr 1fr 1fr 1fr" : "1fr 1fr 1fr", gap:8}}>
+                  {[
+                    {label:"PURCHASED",    value:purchasedTotal,    color:"#e74c3c"},
+                    {label:"MANUFACTURED", value:manufacturedTotal,  color:"#27ae60"},
+                    {label:"TOTAL BUILD",  value:grandTotal,         color:cc.accent},
+                    ...(shortfallCost!=null ? [{label:"SHORTFALL COST", value:shortfallCost, color:"#e67e22"}] : []),
+                  ].map(({label,value,color})=>(
+                    <div key={label} style={{background:"#050d1a", border:`1px solid ${color}33`, padding:"8px 10px"}}>
+                      <div style={{fontSize:9, letterSpacing:2, color:"#4a6a8a", marginBottom:2}}>{label}</div>
+                      <div style={{fontSize:14, fontWeight:"bold", color, fontVariantNumeric:"tabular-nums"}}>
+                        {priceLoading ? "···" : formatISK(value)} ISK
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Breakdown table */}
+              <div style={{border:"1px solid #1a2a3a", overflowX:"auto"}}>
+                <div style={{display:"grid",
+                  gridTemplateColumns: assets ? "1fr 60px 70px 100px 100px 70px 70px 70px" : "1fr 60px 70px 100px 100px 70px",
+                  background:"#050d1a", borderBottom:"1px solid #1a2a3a", padding:"6px 12px", gap:6, minWidth:500}}>
+                  {["COMPONENT","BASE",`ME${me}`,"UNIT","LINE TOTAL","STATUS",
+                    ...(assets ? ["IN STOCK","NEED"] : [])
+                  ].map(h=>(
+                    <div key={h} style={{fontSize:9, letterSpacing:2, color:"#2a5a7a"}}>{h}</div>
+                  ))}
+                </div>
+
+                {breakdown.map(({comp,baseQty,qty,unit,total,inStock,need},i)=>{
+                  const saved = baseQty-qty;
+                  const hasShortfall = need != null && need > 0;
+                  return (
+                    <div key={comp.name} className="row-hover" style={{
+                      display:"grid",
+                      gridTemplateColumns: assets ? "1fr 60px 70px 100px 100px 70px 70px 70px" : "1fr 60px 70px 100px 100px 70px",
+                      padding:"6px 12px", gap:6, alignItems:"center",
+                      background: hasShortfall ? "#1a0e00" : (i%2===0 ? "#07111f" : "#050d1a"),
+                      borderBottom:"1px solid #0d1e30", minWidth:500}}>
+                      <div>
+                        <span style={{fontSize:11, color:comp.owned?"#27ae60":"#c8d8e8"}}>{comp.name}</span>
+                        {comp.owned && <span style={{marginLeft:5, fontSize:9, color:"#27ae60",
+                          border:"1px solid #27ae6044", padding:"1px 4px"}}>BPO</span>}
+                      </div>
+                      <div style={{fontSize:11, color:"#4a7a9b", textAlign:"right", fontVariantNumeric:"tabular-nums"}}>{baseQty}</div>
+                      <div style={{textAlign:"right", fontVariantNumeric:"tabular-nums"}}>
+                        <span style={{fontSize:11, color:saved>0?"#27ae60":"#c8d8e8"}}>{qty}</span>
+                        {saved>0 && <span style={{fontSize:9, color:"#27ae60", marginLeft:2}}>-{saved}</span>}
+                      </div>
+                      <div style={{fontSize:11, color:"#8aaccc", textAlign:"right", fontVariantNumeric:"tabular-nums"}}>
+                        {priceLoading?"···":unit!=null?formatISK(unit):"N/A"}
+                      </div>
+                      <div style={{fontSize:11, fontWeight:"bold", textAlign:"right", fontVariantNumeric:"tabular-nums",
+                        color:comp.owned?"#27ae60":"#e8f4ff"}}>
+                        {priceLoading?"···":total!=null?formatISK(total):"N/A"}
+                      </div>
+                      <div style={{fontSize:9, textAlign:"center", color:comp.owned?"#27ae60":"#e74c3c"}}>
+                        {comp.owned?"◈ OWNED":"◇ BUY"}
+                      </div>
+                      {assets && <>
+                        <div style={{fontSize:11, textAlign:"right", fontVariantNumeric:"tabular-nums",
+                          color: inStock>=qty ? "#27ae60" : "#e67e22"}}>
+                          {inStock?.toLocaleString() ?? "—"}
+                        </div>
+                        <div style={{fontSize:11, textAlign:"right", fontVariantNumeric:"tabular-nums",
+                          color: hasShortfall ? "#e74c3c" : "#27ae60", fontWeight: hasShortfall?"bold":"normal"}}>
+                          {need!=null ? (need===0?"✔":need.toLocaleString()) : "—"}
+                        </div>
+                      </>}
+                    </div>
+                  );
+                })}
+
+                <div style={{display:"grid",
+                  gridTemplateColumns: assets ? "1fr 60px 70px 100px 100px 70px 70px 70px" : "1fr 60px 70px 100px 100px 70px",
+                  padding:"8px 12px", gap:6, background:"#050d1a", borderTop:`1px solid ${cc.accent}44`, minWidth:500}}>
+                  <div style={{fontSize:10, letterSpacing:2, color:cc.accent}}>TOTAL</div>
+                  <div/><div/><div/>
+                  <div style={{fontSize:13, fontWeight:"bold", color:cc.accent, textAlign:"right", fontVariantNumeric:"tabular-nums"}}>
+                    {priceLoading?"···":formatISK(grandTotal)} ISK
+                  </div>
+                  <div/>
+                  {assets && <><div/><div/></>}
+                </div>
+              </div>
+
+              <div style={{marginTop:8, fontSize:9, color:"#2a4a6a", lineHeight:1.8}}>
+                ◈ Jita 4-4 sell orders via Fuzzwork. ◈ BPO rows show manufacturing cost. ◈ ME uses ceil rounding.
+                {assets && " ◈ Stock data from your ESI assets."}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════
+            TAB: ASSET STOCK CHECK
+        ══════════════════════════════════════════════════════════ */}
+        {activeTab === "assets" && (
+          <div>
+            <div style={{fontSize:12, letterSpacing:3, color:"#3a7bd5", marginBottom:16}}>
+              CAPITAL COMPONENT STOCK — ALL CHARACTERS
+            </div>
+            {esiLoading ? (
+              <div style={{color:"#4a7a9b", fontSize:12}}><span className="spin">◈</span> Loading assets...</div>
+            ) : assets ? (
+              <div style={{border:"1px solid #1a2a3a", overflowX:"auto"}}>
+                <div style={{display:"grid", gridTemplateColumns:"1fr 100px 100px 100px",
+                  background:"#050d1a", borderBottom:"1px solid #1a2a3a", padding:"7px 14px", gap:8}}>
+                  {["COMPONENT","IN STOCK","JITA VALUE","STATUS"].map(h=>(
+                    <div key={h} style={{fontSize:9, letterSpacing:2, color:"#2a5a7a"}}>{h}</div>
+                  ))}
+                </div>
+                {COMPONENTS.map((comp,i)=>{
+                  const qty   = assets[comp.typeId] || 0;
+                  const price = prices[comp.typeId];
+                  const value = price ? qty*price : null;
+                  return (
+                    <div key={comp.typeId} className="row-hover" style={{
+                      display:"grid", gridTemplateColumns:"1fr 100px 100px 100px",
+                      padding:"7px 14px", gap:8, alignItems:"center",
+                      background: i%2===0?"#07111f":"#050d1a",
+                      borderBottom:"1px solid #0d1e30"}}>
+                      <div>
+                        <span style={{fontSize:11, color:comp.owned?"#27ae60":"#c8d8e8"}}>{comp.name}</span>
+                        {comp.owned && <span style={{marginLeft:5, fontSize:9, color:"#27ae60",
+                          border:"1px solid #27ae6044", padding:"1px 4px"}}>BPO</span>}
+                      </div>
+                      <div style={{fontSize:12, fontWeight:"bold", textAlign:"right",
+                        color: qty>0?"#e8f4ff":"#2a4a6a", fontVariantNumeric:"tabular-nums"}}>
+                        {qty>0 ? qty.toLocaleString() : "—"}
+                      </div>
+                      <div style={{fontSize:11, textAlign:"right", color:"#8aaccc", fontVariantNumeric:"tabular-nums"}}>
+                        {value!=null && qty>0 ? formatISK(value)+" ISK" : "—"}
+                      </div>
+                      <div style={{fontSize:9, color: qty>0?"#27ae60":"#4a6a8a"}}>
+                        {qty>0 ? "◈ IN STOCK" : "◇ NONE"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{color:"#4a6a8a", fontSize:11}}>No asset data loaded.</div>
+            )}
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════
+            TAB: INDUSTRY JOBS
+        ══════════════════════════════════════════════════════════ */}
+        {activeTab === "jobs" && (
+          <div>
+            <div style={{fontSize:12, letterSpacing:3, color:"#3a7bd5", marginBottom:16}}>
+              ACTIVE INDUSTRY JOBS
+            </div>
+            {esiLoading ? (
+              <div style={{color:"#4a7a9b", fontSize:12}}><span className="spin">◈</span> Loading jobs...</div>
+            ) : jobs && jobs.length > 0 ? (
+              <div style={{border:"1px solid #1a2a3a", overflowX:"auto"}}>
+                <div style={{display:"grid", gridTemplateColumns:"2fr 1fr 1fr 80px 100px",
+                  background:"#050d1a", borderBottom:"1px solid #1a2a3a", padding:"7px 14px", gap:8}}>
+                  {["PRODUCT","ACTIVITY","FACILITY","RUNS","TIME REMAINING"].map(h=>(
+                    <div key={h} style={{fontSize:9, letterSpacing:2, color:"#2a5a7a"}}>{h}</div>
+                  ))}
+                </div>
+                {jobs.sort((a,b)=>new Date(a.end_date)-new Date(b.end_date)).map((job,i)=>{
+                  const now       = new Date();
+                  const end       = new Date(job.end_date);
+                  const remaining = end - now;
+                  const done      = remaining <= 0;
+                  const h         = Math.floor(remaining/3600000);
+                  const m         = Math.floor((remaining%3600000)/60000);
+                  const timeStr   = done ? "READY" : h>24 ? `${Math.floor(h/24)}d ${h%24}h` : `${h}h ${m}m`;
+                  const activity  = {1:"Manufacturing",3:"TE Research",4:"ME Research",5:"Copying",8:"Invention",9:"Reaction"}[job.activity_id]||`Activity ${job.activity_id}`;
+                  const productName = typeNames[job.product_type_id] || `Type ${job.product_type_id}`;
+                  const facilityName = typeNames[job.facility_id] || `Facility ${job.facility_id}`;
+
+                  return (
+                    <div key={job.job_id} className="row-hover" style={{
+                      display:"grid", gridTemplateColumns:"2fr 1fr 1fr 80px 100px",
+                      padding:"8px 14px", gap:8, alignItems:"center",
+                      background: done?"#0a1a0a":(i%2===0?"#07111f":"#050d1a"),
+                      borderBottom:"1px solid #0d1e30"}}>
+                      <div style={{fontSize:11, color:"#e8f4ff", fontWeight:"bold"}}>{productName}</div>
+                      <div style={{fontSize:10, color:"#8aaccc"}}>{activity}</div>
+                      <div style={{fontSize:10, color:"#5a7a9a"}}>{facilityName}</div>
+                      <div style={{fontSize:11, textAlign:"center", color:"#c8d8e8"}}>{job.runs}</div>
+                      <div style={{fontSize:11, fontWeight:"bold", textAlign:"right",
+                        color: done?"#27ae60":"#e8f4ff"}} className={done?"blink":""}>
+                        {timeStr}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : jobs && jobs.length === 0 ? (
+              <div style={{color:"#4a6a8a", fontSize:11}}>No active industry jobs.</div>
+            ) : (
+              <div style={{color:"#4a6a8a", fontSize:11}}>No job data loaded.</div>
+            )}
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════
+            TAB: PI COLONIES
+        ══════════════════════════════════════════════════════════ */}
+        {activeTab === "pi" && (
+          <div>
+            <div style={{fontSize:12, letterSpacing:3, color:"#3a7bd5", marginBottom:16}}>
+              PI COLONIES
+            </div>
+            {esiLoading ? (
+              <div style={{color:"#4a7a9b", fontSize:12}}><span className="spin">◈</span> Loading colonies...</div>
+            ) : planets && planets.length > 0 ? (
+              <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:12}}>
+                {planets.map(p=>{
+                  const planetName = typeNames[p.planet_id] || `Planet ${p.planet_id}`;
+                  const lastUpdate = new Date(p.last_update);
+                  const upgLevel   = p.upgrade_level;
+                  const typeColors = {
+                    "temperate":"#27ae60","barren":"#8e6a3a","lava":"#c0392b",
+                    "oceanic":"#2980b9","ice":"#85c1e9","gas":"#8e44ad",
+                    "storm":"#f39c12","plasma":"#e74c3c"
+                  };
+                  const pType  = (p.planet_type||"").toLowerCase().replace("planet_","");
+                  const pColor = typeColors[pType] || "#4a6a8a";
+                  return (
+                    <div key={p.planet_id} style={{
+                      background:"#07111f", border:`1px solid ${pColor}44`,
+                      padding:"14px", boxShadow:`0 0 12px ${pColor}22`}}>
+                      <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10}}>
+                        <div>
+                          <div style={{fontSize:9, letterSpacing:2, color:pColor, marginBottom:3, textTransform:"uppercase"}}>
+                            {pType || "Unknown"} Planet
+                          </div>
+                          <div style={{fontSize:13, fontWeight:"bold", color:"#e8f4ff"}}>{planetName}</div>
+                        </div>
+                        <div style={{textAlign:"right"}}>
+                          <div style={{fontSize:9, color:"#4a6a8a"}}>CCU LEVEL</div>
+                          <div style={{fontSize:18, fontWeight:"bold", color:pColor}}>{upgLevel}</div>
+                        </div>
+                      </div>
+                      <div style={{fontSize:9, color:"#2a5a7a"}}>
+                        LAST UPDATED: {lastUpdate.toLocaleDateString()} {lastUpdate.toLocaleTimeString()}
+                      </div>
+                      <div style={{marginTop:8, display:"flex", gap:8, flexWrap:"wrap"}}>
+                        <div style={{fontSize:9, background:`${pColor}22`, border:`1px solid ${pColor}44`,
+                          padding:"2px 8px", color:pColor}}>
+                          {p.num_pins || 0} PINS
+                        </div>
+                        <div style={{fontSize:9, background:"#0d1f35", border:"1px solid #1e3a5f",
+                          padding:"2px 8px", color:"#4a7a9b"}}>
+                          SOLAR SYSTEM {p.solar_system_id}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : planets && planets.length === 0 ? (
+              <div style={{color:"#4a6a8a", fontSize:11}}>No PI colonies found.</div>
+            ) : (
+              <div style={{color:"#4a6a8a", fontSize:11}}>No colony data loaded.</div>
+            )}
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
